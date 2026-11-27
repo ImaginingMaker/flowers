@@ -6,6 +6,7 @@ export function windMaterial(grass = false) {
     uniforms: {
       uTime: { value: 0 }, uNight: { value: 0 }, uReveal: { value: 1 },
       uWind: { value: 1 }, uGrass: { value: grass ? 1 : 0 },
+      uVisibility: { value: 1 }, uFogStrength: { value: 1 }, uExposure: { value: 1 },
       uFogDay: { value: new THREE.Color('#eec6a1') },
       uFogNight: { value: new THREE.Color('#253346') },
     },
@@ -55,7 +56,12 @@ export function windMaterial(grass = false) {
       uniform float uGrass;
       uniform vec3 uFogDay;
       uniform vec3 uFogNight;
+      uniform float uVisibility;
+      uniform float uFogStrength;
+      uniform float uExposure;
       void main() {
+        float grain = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        if (uVisibility < grain) discard;
         vec3 n = normalize(vNormal) * (gl_FrontFacing ? 1. : -1.);
         float light = dot(n, normalize(vec3(-.6, .8, .6)));
         float softLight = smoothstep(-.5, .8, light);
@@ -69,9 +75,9 @@ export function windMaterial(grass = false) {
         vec3 night = vColor * (.34 + softLight * .37 + fill * .07) * vec3(.78, .91, 1.2);
         night += vColor * vec3(.6, .66, .86) * transmission * .09;
         night += vColor * vec3(.13, .065, .055) * smoothstep(1.35, 2., vHeight);
-        vec3 c = mix(day, night, uNight);
+        vec3 c = mix(day, night, uNight) * uExposure;
         c *= mix(1., .6 + vHeight * .4, uGrass);
-        float distanceFog = 1. - exp(-length(cameraPosition - vWorld) * mix(.017, .026, uNight));
+        float distanceFog = 1. - exp(-length(cameraPosition - vWorld) * mix(.017, .026, uNight) * uFogStrength);
         c = mix(c, mix(uFogDay, uFogNight, uNight), distanceFog);
         gl_FragColor = vec4(c, 1.);
         #include <tonemapping_fragment>

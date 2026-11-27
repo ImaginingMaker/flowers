@@ -7,13 +7,13 @@ import { grassGeometry, meadowFlower, seededRandom, terrainHeight } from './mead
 import { windMaterial } from './meadowMaterial'
 
 export interface MeadowProps {
-  flower: FlowerId; night: boolean; motion: boolean; active: boolean; detail: boolean
+  flower: FlowerId; night: boolean; motion: boolean; active: boolean; reading: boolean
   bloomReplay: number
   pointer: React.RefObject<{ x: number; y: number }>
   onReady: () => void; onLost: () => void
 }
 
-type Environment = { time: number; night: number; reveal: number; wind: number; detailBloom: number }
+type Environment = { time: number; night: number; reveal: number; wind: number; detailBloom: number; context: number }
 
 function FlowerInstances({ id, palette, distant, count, env }: {
   id: FlowerId; palette: number; distant: boolean; count: number; env: React.RefObject<Environment>
@@ -50,23 +50,26 @@ function FlowerInstances({ id, palette, distant, count, env }: {
     material.uniforms.uNight.value = env.current.night
     material.uniforms.uReveal.value = env.current.reveal
     material.uniforms.uWind.value = env.current.wind
+    material.uniforms.uVisibility.value = env.current.context
   })
   return <instancedMesh ref={ref} args={[geometry, material, count]} frustumCulled={false} />
 }
 
 function FeaturedFlower({ id, env }: { id: FlowerId; env: React.RefObject<Environment> }) {
   const ref = useRef<THREE.InstancedMesh>(null)
+  const { size } = useThree()
+  const scale = 1.1 * Math.min(1.75, Math.max(1, size.width / size.height))
   const geometry = useMemo(() => meadowFlower(id, 0, false, true), [id])
   const material = useMemo(() => windMaterial(), [])
   useLayoutEffect(() => {
     const object = new THREE.Object3D()
-    object.position.set(0, terrainHeight(0, 2.1), 2.1)
+    object.position.set(0, terrainHeight(0, 2.1) - (scale - 1.1) * 1.9, 2.1)
     object.rotation.y = -.3
-    object.scale.setScalar(1.1)
+    object.scale.setScalar(scale)
     object.updateMatrix()
     ref.current?.setMatrixAt(0, object.matrix)
     if (ref.current) ref.current.instanceMatrix.needsUpdate = true
-  }, [geometry])
+  }, [geometry, scale])
   useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => material.dispose(), [material])
   useFrame(() => {
@@ -74,6 +77,9 @@ function FeaturedFlower({ id, env }: { id: FlowerId; env: React.RefObject<Enviro
     material.uniforms.uNight.value = env.current.night
     material.uniforms.uWind.value = env.current.wind
     material.uniforms.uReveal.value = env.current.detailBloom
+    material.uniforms.uVisibility.value = 1 - env.current.context
+    material.uniforms.uFogStrength.value = .15 + env.current.context * .85
+    material.uniforms.uExposure.value = THREE.MathUtils.lerp(.58 + env.current.night * .32, 1, env.current.context)
   })
   return <instancedMesh ref={ref} args={[geometry, material, 1]} frustumCulled={false} />
 }
@@ -101,6 +107,7 @@ function Grass({ env, low }: { env: React.RefObject<Environment>; low: boolean }
     material.uniforms.uTime.value = env.current.time
     material.uniforms.uNight.value = env.current.night
     material.uniforms.uWind.value = env.current.wind
+    material.uniforms.uVisibility.value = env.current.context
   })
   return <instancedMesh ref={ref} args={[geometry, material, count]} frustumCulled={false} />
 }
@@ -148,22 +155,27 @@ function Landscape({ env }: { env: React.RefObject<Environment> }) {
   const nightHill = useMemo(() => new THREE.Color('#3b5261'), [])
   useEffect(() => () => { terrain.dispose(); cloudGeometry.dispose() }, [terrain, cloudGeometry])
   useFrame(() => {
-    if (ground.current) ground.current.color.copy(dayGround).lerp(nightGround, env.current.night)
+    if (ground.current) {
+      ground.current.color.copy(dayGround).lerp(nightGround, env.current.night)
+      ground.current.opacity = env.current.context
+    }
     hills.current?.children.forEach((hill, i) => {
-      (hill as THREE.Mesh<THREE.BufferGeometry, THREE.MeshLambertMaterial>).material.color.copy(dayHill[i]).lerp(nightHill, env.current.night)
+      const material = (hill as THREE.Mesh<THREE.BufferGeometry, THREE.MeshLambertMaterial>).material
+      material.color.copy(dayHill[i]).lerp(nightHill, env.current.night)
+      material.opacity = env.current.context
     })
     if (clouds.current) {
       const mat = clouds.current.material as THREE.MeshBasicMaterial
-      mat.opacity = .5 * (1 - env.current.night) + .07
+      mat.opacity = (.5 * (1 - env.current.night) + .07) * env.current.context
       clouds.current.position.x = Math.sin(env.current.time * .018) * 1.3
     }
   })
   return <>
-    <mesh geometry={terrain}><meshLambertMaterial ref={ground} vertexColors /></mesh>
+    <mesh geometry={terrain}><meshLambertMaterial ref={ground} vertexColors transparent depthWrite={false} /></mesh>
     <group ref={hills}>
       {[[-25, -2, -52, 30, 10, 18], [27, -3, -60, 34, 12, 21], [-10, -3, -73, 40, 15, 24], [29, -2, -83, 44, 18, 26]].map((p, i) =>
         <mesh key={i} position={p.slice(0, 3) as [number, number, number]} scale={p.slice(3) as [number, number, number]}>
-          <sphereGeometry args={[1, 36, 20]} /><meshLambertMaterial color={dayHill[i]} />
+          <sphereGeometry args={[1, 36, 20]} /><meshLambertMaterial color={dayHill[i]} transparent depthWrite={false} />
         </mesh>)}
     </group>
     <mesh ref={clouds} geometry={cloudGeometry}><meshBasicMaterial color="#fff3dc" transparent opacity={.57} depthWrite={false} /></mesh>
@@ -185,14 +197,14 @@ function FloatingLights({ env }: { env: React.RefObject<Environment> }) {
   }, [])
   const material = useMemo(() => new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uTime: { value: 0 }, uNight: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uContext: { value: 1 } },
     vertexShader: `uniform float uTime; varying float vPulse; void main(){
       vec3 p=position; p.y+=sin(uTime*.6+position.x)*.25; p.x+=sin(uTime*.35+position.z)*.2;
       vec4 mv=modelViewMatrix*vec4(p,1.); gl_Position=projectionMatrix*mv;
       gl_PointSize=clamp(70./-mv.z,2.,14.); vPulse=.45+.55*sin(uTime*1.2+position.x*3.)*sin(uTime*1.2+position.x*3.);
     }`,
-    fragmentShader: `uniform float uNight; varying float vPulse; void main(){
-      float d=length(gl_PointCoord-.5); float a=smoothstep(.5,0.,d)*vPulse*mix(.28,.9,uNight);
+    fragmentShader: `uniform float uNight; uniform float uContext; varying float vPulse; void main(){
+      float d=length(gl_PointCoord-.5); float a=smoothstep(.5,0.,d)*vPulse*mix(.28,.9,uNight)*mix(.22,1.,uContext);
       gl_FragColor=vec4(mix(vec3(1.,.83,.49),vec3(1.,.88,.6),uNight),a);
     }`,
   }), [])
@@ -200,6 +212,7 @@ function FloatingLights({ env }: { env: React.RefObject<Environment> }) {
   useFrame(() => {
     material.uniforms.uTime.value = env.current.time
     material.uniforms.uNight.value = env.current.night
+    material.uniforms.uContext.value = env.current.context
   })
   return <points ref={ref} geometry={geometry} material={material} frustumCulled={false} />
 }
@@ -208,7 +221,9 @@ function World(props: MeadowProps) {
   const { camera, gl, size, setDpr, invalidate } = useThree()
   const [displayed, setDisplayed] = useState(props.flower)
   const [low, setLow] = useState(false)
-  const env = useRef<Environment>({ time: 0, night: props.night ? 1 : 0, reveal: 0, wind: 1, detailBloom: 1 })
+  const env = useRef<Environment>({ time: 0, night: props.night ? 1 : 0, reveal: 0, wind: 1, detailBloom: 1, context: 1 })
+  const landscapeGroup = useRef<THREE.Group>(null)
+  const specimenGroup = useRef<THREE.Group>(null)
   const bloomElapsed = useRef(0)
   const fog = useMemo(() => new THREE.FogExp2('#eec6a1', .015), [])
   const sun = useRef<THREE.DirectionalLight>(null)
@@ -231,20 +246,25 @@ function World(props: MeadowProps) {
   }, [gl, props.onLost])
   useEffect(() => { if (!props.motion) setDisplayed(props.flower) }, [props.flower, props.motion])
   // Uniform changes need an explicit frame when reduced motion uses demand rendering.
-  useEffect(() => { invalidate() }, [displayed, props.night, props.motion, props.detail, props.active, invalidate])
+  useEffect(() => { invalidate() }, [displayed, props.night, props.motion, props.reading, props.active, invalidate])
   useEffect(() => {
     bloomElapsed.current = 0
-    env.current.detailBloom = props.detail && props.motion ? 0 : 1
+    env.current.detailBloom = props.reading && props.motion ? 0 : 1
     invalidate()
-  }, [props.detail, props.bloomReplay, props.motion, invalidate])
+  }, [props.reading, props.bloomReplay, props.flower, props.motion, invalidate])
   useFrame((state, delta) => {
     const dt = Math.min(delta, .06)
     env.current.time += props.motion ? dt : 0
     env.current.wind = props.motion ? 1 : 0
-    if (props.detail && props.motion) {
+    if (props.reading && props.motion) {
       bloomElapsed.current += dt
       env.current.detailBloom = 1 - Math.pow(1 - Math.min(1, bloomElapsed.current / 3.4), 3.2)
     } else env.current.detailBloom = 1
+    env.current.context = props.motion ? THREE.MathUtils.damp(env.current.context, props.reading ? 0 : 1, 3, dt) : props.reading ? 0 : 1
+    if (env.current.context < .01) env.current.context = 0
+    if (env.current.context > .99) env.current.context = 1
+    if (landscapeGroup.current) landscapeGroup.current.visible = env.current.context > .005
+    if (specimenGroup.current) specimenGroup.current.visible = env.current.context < .995
     env.current.night = props.motion ? THREE.MathUtils.damp(env.current.night, props.night ? 1 : 0, 2.8, dt) : props.night ? 1 : 0
     const target = displayed === props.flower ? 1 : 0
     env.current.reveal = props.motion ? THREE.MathUtils.damp(env.current.reveal, target, 7, dt) : target
@@ -256,10 +276,10 @@ function World(props: MeadowProps) {
     if (ambient.current) ambient.current.intensity = 1.1 - night * .45
     const drift = props.motion ? Math.sin(env.current.time * .11) * .13 : 0
     const follow = props.motion ? 1 - Math.exp(-dt * 3) : 1
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, props.detail ? 0 : props.pointer.current.x * .4 + drift, follow)
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, props.detail ? 2.75 : 3.2, follow)
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, props.detail ? 5.5 : 8, follow)
-    targetLook.set(0, props.detail ? .8 : 1.25, props.detail ? 2.1 : -13)
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, props.reading ? 0 : props.pointer.current.x * .4 + drift, follow)
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, props.reading ? 2.75 : 3.2, follow)
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, props.reading ? 5.5 : 8, follow)
+    targetLook.set(0, props.reading ? 1.5 : 1.25, props.reading ? 2.1 : -13)
     lookAt.lerp(targetLook, follow)
     camera.lookAt(lookAt)
     if (frames.current === 0) props.onReady()
@@ -271,8 +291,8 @@ function World(props: MeadowProps) {
     if (env.current.reveal > .99 && target === 1) gl.domElement.dataset.flower = displayed
     else delete gl.domElement.dataset.flower
     gl.domElement.dataset.theme = Math.abs(night - (props.night ? 1 : 0)) < .01 ? props.night ? 'night' : 'day' : 'transition'
-    gl.domElement.dataset.view = Math.abs(camera.position.z - (props.detail ? 5.5 : 8)) < .015 ? props.detail ? 'detail' : 'field' : 'transition'
-    gl.domElement.dataset.bloom = props.detail && env.current.detailBloom < .995 ? 'opening' : 'open'
+    gl.domElement.dataset.view = Math.abs(camera.position.z - (props.reading ? 5.5 : 8)) < .015 ? props.reading ? 'specimen' : 'field' : 'transition'
+    gl.domElement.dataset.bloom = props.reading && env.current.detailBloom < .995 ? 'opening' : 'open'
     if (frames.current % 60 === 0) {
       gl.domElement.dataset.drawCalls = String(gl.info.render.calls)
       gl.domElement.dataset.triangles = String(gl.info.render.triangles)
@@ -283,13 +303,15 @@ function World(props: MeadowProps) {
   return <>
     <ambientLight ref={ambient} intensity={1.1} color="#fff0dd" />
     <directionalLight ref={sun} position={[-10, 15, 8]} intensity={1.5} color="#ffefd6" />
-    <Landscape env={env} />
-    <Grass env={env} low={low} />
-    {[0, 1, 2].map(palette => <group key={palette}>
-      <FlowerInstances id={displayed} palette={palette} distant={false} count={nearCount} env={env} />
-      <FlowerInstances id={displayed} palette={palette} distant count={farCount} env={env} />
-    </group>)}
-    {props.detail && <FeaturedFlower id={displayed} env={env} />}
+    <group ref={landscapeGroup}>
+      <Landscape env={env} />
+      <Grass env={env} low={low} />
+      {[0, 1, 2].map(palette => <group key={palette}>
+        <FlowerInstances id={displayed} palette={palette} distant={false} count={nearCount} env={env} />
+        <FlowerInstances id={displayed} palette={palette} distant count={farCount} env={env} />
+      </group>)}
+    </group>
+    <group ref={specimenGroup} visible={false}><FeaturedFlower id={displayed} env={env} /></group>
     <FloatingLights env={env} />
   </>
 }
