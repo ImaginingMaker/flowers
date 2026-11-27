@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { FlowerId } from './data'
+import { profileSurface, profileWidth } from './botany/petalProfile'
 
 function surface(fn: (u: number, t: number) => THREE.Vector3, base: string, tip: string, rows = 24, cols = 20) {
   const positions: number[] = [], colors: number[] = [], indices: number[] = []
@@ -27,55 +28,39 @@ function surface(fn: (u: number, t: number) => THREE.Vector3, base: string, tip:
   return geo
 }
 
-export function tulipPetal(palette: number) {
+export function tulipPetal(palette: number, rows = 24, cols = 20) {
   const tones = [['#c9614f', '#f2a389'], ['#d79b43', '#f3cb80'], ['#d28770', '#f9bfa3']]
   return surface((u, t) => {
     const angle = u * .66
     const r = .025 + .47 * Math.sin(t * Math.PI * .68)
     const y = t * 1.13 - .14 * u * u * Math.pow(t, 5)
     return new THREE.Vector3(Math.sin(angle) * r, y, Math.cos(angle) * r)
-  }, ...tones[palette] as [string, string])
+  }, ...tones[palette] as [string, string], rows, cols)
 }
 
-export function rosePetal(layer: number) {
-  return surface((u, t) => {
-    const angle = u * (.66 + layer * .045)
-    const radius = .018 + (.15 + layer * .095) * Math.sin(t * (layer === 0 ? 2.65 : layer === 1 ? 2.1 : 1.55))
-    const curl = Math.pow(t, 6) * (.035 + layer * .02)
-    return new THREE.Vector3(Math.sin(angle) * radius,
-      t * (.56 + layer * .025) - Math.pow(t, 3) * layer * .048 - .06 * u * u * t,
-      Math.cos(angle) * radius + curl)
-  }, layer < 2 ? '#a64e54' : '#ba6268', layer < 2 ? '#da9385' : '#efb0a0')
-}
-
-export function flatPetal(id: FlowerId, variation: number) {
+export function flatPetal(id: FlowerId, variation: number, rows = 18, cols = 12) {
   const daisy = id === 'daisy'
-  return surface((u, t) => {
-    const width = (daisy ? .09 : .22) * Math.pow(Math.sin(Math.PI * t), .65)
+  const widths = daisy ? [.025, .048, .067, .08, .06] : [.065, .14, .20, .22, .17]
+  const geometry = profileSurface(rows, cols, (u, t) => {
+    const width = profileWidth(t, widths)
     const length = daisy ? .59 : .75
-    return new THREE.Vector3(u * width, .05 + .19 * t * t + .05 * u * u + .025 * Math.sin(t * 19) * Math.abs(u),
-      .07 + length * t)
-  }, daisy ? '#dfcf9d' : variation ? '#ce8c57' : '#de9c68', daisy ? '#fff5db' : '#f5c69b', 18, 12)
+    return new THREE.Vector3(u * width, .04 + (daisy ? .06 : .10) * t * t + .03 * u * u + .012 * Math.sin(t * 19) * u * u, .07 + length * t)
+  })
+  const base = new THREE.Color(daisy ? '#decf9e' : variation ? '#ce8c57' : '#de9c68')
+  const tip = new THREE.Color(daisy ? '#fff8e8' : '#f5c69b')
+  const colors: number[] = []
+  for (let j = 0; j < rows; j++) for (let i = 0; i <= cols; i++) {
+    const c = base.clone().lerp(tip, j / rows * .9 + Math.abs(i / cols * 2 - 1) * .1)
+    colors.push(c.r, c.g, c.b)
+  }
+  colors.push(tip.r, tip.g, tip.b)
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  return geometry
 }
 
-export function leafGeometry(length: number, width: number, curl: number) {
+export function leafGeometry(length: number, width: number, curl: number, rows = 20, cols = 10) {
   return surface((u, t) => {
     const w = width * Math.pow(Math.sin(Math.PI * t), .85)
     return new THREE.Vector3(u * w, t * length, curl * t * t + Math.abs(u) * w * .27)
-  }, '#526744', '#a2b579', 20, 10)
-}
-
-export function stemGeometry(points: number[][], radius = .026) {
-  return new THREE.TubeGeometry(
-    new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p as [number, number, number]))),
-    24, radius, 7, false,
-  )
-}
-
-export function makeGradient() {
-  const gradient = new THREE.DataTexture(new Uint8Array([100, 146, 186, 216, 244]), 5, 1, THREE.RedFormat)
-  gradient.minFilter = gradient.magFilter = THREE.NearestFilter
-  gradient.generateMipmaps = false
-  gradient.needsUpdate = true
-  return gradient
+  }, '#526744', '#a2b579', rows, cols)
 }

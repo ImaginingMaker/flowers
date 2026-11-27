@@ -1,13 +1,19 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
-import type { ErrorInfo, ReactNode } from 'react'
-import { useGesture } from '@use-gesture/react'
-import { ArrowRight, Check, ChevronLeft, ChevronRight, Flower2, Heart, Leaf, Maximize2, MoveHorizontal, RotateCw, Sparkles, Volume2, VolumeX, X } from 'lucide-react'
+import type { ErrorInfo, ReactNode, RefObject } from 'react'
+import { useDrag, useGesture } from '@use-gesture/react'
+import { ArrowDown, ArrowRight, Check, ChevronLeft, ChevronRight, ChevronUp, Flower2, Grid2X2, Heart, Leaf, Moon, MoveHorizontal, RotateCw, Sun, Volume2, VolumeX, X } from 'lucide-react'
 import { flowers } from './data'
 import FlowerIllustration from './FlowerIllustration'
 import { createAmbience } from './ambient'
 
-const FlowerScene = lazy(() => import('./FlowerScene'))
-type Panel = 'collection' | 'garden' | 'story' | null
+const MeadowScene = lazy(() => import('./MeadowScene'))
+const meadowWords = [
+  { title: '把自己，交给\n一整个春天。', night: '月光落下，\n花也温柔地醒着。', en: 'SOMEWHERE, SPRING NEVER ENDS.' },
+  { title: '坠入一场，\n不落幕的浪漫。', night: '今晚的月色，\n也为你心动。', en: 'FALL INTO A FIELD OF LOVE.' },
+  { title: '风会把温柔，\n带到你身边。', night: '借一片星光，\n安放你的心事。', en: 'LET THE WIND CARRY YOU.' },
+  { title: '平凡的日子，\n也会闪闪发光。', night: '小小的花，\n守着满天的星。', en: 'MAGIC IN THE ORDINARY.' },
+]
+type Panel = 'collection' | 'garden' | null
 
 function loadFavorites(): string[] {
   try {
@@ -23,109 +29,109 @@ class SceneBoundary extends Component<{ children: ReactNode; fallback: ReactNode
   render() { return this.state.failed ? this.props.fallback : this.props.children }
 }
 
-function Dialog({ panel, close, favorites, select }: {
-  panel: Exclude<Panel, null>; close: () => void; favorites: string[]; select: (index: number) => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
+function useFocusTrap(ref: RefObject<HTMLDivElement | null>, close: () => void) {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
-    const old = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    ref.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    ref.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
+      if (e.key === 'Escape') { e.preventDefault(); close() }
       if (e.key !== 'Tab') return
       const nodes = ref.current?.querySelectorAll<HTMLElement>('button, a[href], [tabindex="0"]')
       if (!nodes?.length) return
       const first = nodes[0], last = nodes[nodes.length - 1]
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
-      if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus({ preventScroll: true }) }
+      if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus({ preventScroll: true }) }
     }
     document.addEventListener('keydown', key)
-    return () => { document.body.style.overflow = old; document.removeEventListener('keydown', key); previous?.focus() }
-  }, [close])
-  const available = flowers.map((f, i) => ({ ...f, index: i })).filter(f => panel !== 'garden' || favorites.includes(f.id))
-  return <div className="dialog-backdrop" onClick={e => { if (e.target === e.currentTarget) close() }}>
-    <div className="dialog" ref={ref} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-      <button className="icon-button dialog-close" onClick={close} aria-label="关闭窗口"><X size={20} /></button>
-      <span className="eyebrow">A LITTLE WORLD OF FLOWERS</span>
-      <h2 id="dialog-title">{panel === 'garden' ? '我的小小花园' : panel === 'story' ? '让心意，慢慢开花。' : '挑一朵，送给此刻的你'}</h2>
-      {panel === 'story' ? <div className="story">
-        <div className="story-mark"><Flower2 size={36} strokeWidth={1} /></div>
-        <p>「花语」是花朵悄悄说的话。</p>
-        <p>我们想在忙碌的日常里，留出一座小小的庭院。在这里，没有需要赶上的季节，只有轻轻摇曳的花，和可以慢下来的你。</p>
-        <p>从日系手绘动画里的自然与温柔获得灵感，用柔和的暖色和真实的立体花瓣，记录那些微小而浪漫的瞬间。</p>
-        <p className="story-foot">一朵花，一份心意。<br />May your ordinary days bloom.</p>
-        <button className="primary-button" onClick={close}>回到花间 <ArrowRight size={16} /></button>
-      </div> : <>
-        <p className="dialog-description">{panel === 'garden' ? '把喜欢的花留在这里，随时回来看看。收藏保存在这台设备上。' : '不同的花语，同样温柔的心意。'}</p>
-        {available.length ? <div className="dialog-flowers">{available.map(f => <button key={f.id} className="dialog-flower" onClick={() => { select(f.index); close() }}>
-          <FlowerIllustration id={f.id} />
-          <span><strong>{f.name}</strong><small>{f.meaning}</small></span>
-          <ArrowRight size={17} />
-        </button>)}</div> : <div className="empty-garden"><Heart size={32} strokeWidth={1} /><p>花园还在等待第一朵花。</p><span>点击花朵旁的爱心，把喜欢留下。</span><button className="primary-button" onClick={close}>去遇见一朵花 <ArrowRight size={16} /></button></div>}
-        <p className="dialog-note">花语因文化与花色而异，这里收录的是我们喜爱的浪漫解读。</p>
-      </>}
+    return () => { document.removeEventListener('keydown', key); previous?.focus({ preventScroll: true }) }
+  }, [close, ref])
+}
+
+function FlowerDetails({ index, saved, close, save, replay }: { index: number; saved: boolean; close: () => void; save: () => void; replay: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const flower = flowers[index]
+  useFocusTrap(ref, close)
+  const drag = useDrag(({ last, movement: [, y] }) => { if (last && y > 55) close() }, { axis: 'y', filterTaps: true, threshold: 8 })
+  return <div className="detail-layer" onClick={e => { if (e.currentTarget === e.target) close() }}>
+    <div className="detail-sheet" ref={ref} role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <div className="sheet-handle" {...drag()}><span /><small>下滑，回到花海</small></div>
+      <button className="close-button" onClick={close} aria-label="收起花朵详情"><X size={19} /></button>
+      <button className="bloom-replay" onClick={replay} aria-label="重播花朵盛开动画"><RotateCw size={12} />再看一次花开</button>
+      <div className="detail-content">
+        <div className="detail-kicker"><Leaf size={13} /> THE LANGUAGE OF FLOWERS <span>{String(index + 1).padStart(2, '0')} / 04</span></div>
+        <div className="detail-heading"><div><h2 id="detail-title">{flower.name}<em>{flower.en}</em></h2><p>{flower.latin}</p></div><FlowerIllustration id={flower.id} /></div>
+        <div className="detail-meaning"><span>{flower.tag}</span><p>{flower.meaning}</p></div>
+        <blockquote>{flower.poem}<span>“</span></blockquote>
+        <div className="detail-facts"><div><small>与花相遇的季节</small><p>{flower.season}</p></div><div><small>送给此刻的你</small><p>{flower.note}</p></div></div>
+        <button className={`save-button ${saved ? 'saved' : ''}`} onClick={save} aria-pressed={saved}><Heart size={17} fill={saved ? 'currentColor' : 'none'} />{saved ? '已收藏这份浪漫' : '把这份浪漫，留在花园里'}<span>{saved ? '取消收藏' : '收藏花朵'}</span></button>
+        <p className="detail-footnote">一朵花，一份心意。花语是我们喜爱的浪漫解读。</p>
+      </div>
+    </div>
+  </div>
+}
+
+function Collection({ panel, favorites, close, select }: { panel: Exclude<Panel, null>; favorites: string[]; close: () => void; select: (index: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useFocusTrap(ref, close)
+  const list = flowers.map((f, index) => ({ ...f, index })).filter(f => panel !== 'garden' || favorites.includes(f.id))
+  return <div className="panel-layer" onClick={e => { if (e.currentTarget === e.target) close() }}>
+    <div className="collection-panel" ref={ref} role="dialog" aria-modal="true" aria-labelledby="collection-title">
+      <button className="close-button" onClick={close} aria-label="关闭花园"><X size={19} /></button>
+      <span className="panel-eyebrow">A WORLD MADE OF LITTLE BLOOMS</span>
+      <h2 id="collection-title">{panel === 'garden' ? '你收藏的，一点浪漫。' : '下一站，想去哪里？'}</h2>
+      <p>{panel === 'garden' ? '喜欢的花海，随时为你盛开。收藏保存在这台设备上。' : '四片花海，四种温柔。选一片，让心慢下来。'}</p>
+      {list.length > 0 ? <div className="collection-list">{list.map(f => <button key={f.id} onClick={() => { select(f.index); close() }}>
+        <FlowerIllustration id={f.id} /><span><strong>{f.name}花海</strong><small>{f.meaning}</small></span><ArrowRight size={18} />
+      </button>)}</div> : <div className="empty-garden"><Heart size={34} strokeWidth={1} /><p>还没有收藏的花。</p><small>上滑打开花语，留下你喜欢的那一朵。</small><button onClick={close}>回到花海 <ArrowRight size={15} /></button></div>}
     </div>
   </div>
 }
 
 export default function App() {
   const [index, setIndex] = useState(0)
-  const [blooming, setBlooming] = useState(false)
-  const [rotating, setRotating] = useState(false)
+  const [night, setNight] = useState(false)
+  const [detail, setDetail] = useState(false)
+  const [bloomReplay, setBloomReplay] = useState(0)
+  const [panel, setPanel] = useState<Panel>(null)
   const [sound, setSound] = useState(false)
   const [visible, setVisible] = useState(!document.hidden)
-  const [reduced, setReduced] = useState(window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-  const [panel, setPanel] = useState<Panel>(null)
+  const [reduced, setReduced] = useState(matchMedia('(prefers-reduced-motion: reduce)').matches)
   const [favorites, setFavorites] = useState(loadFavorites)
   const [toast, setToast] = useState('')
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
   const [sceneKey, setSceneKey] = useState(0)
   const stage = useRef<HTMLDivElement>(null)
-  const controls = useRef({ rotation: 0, zoom: 1 })
-  const dragStart = useRef(0), pinched = useRef(false)
+  const pointer = useRef({ x: 0, y: 0 })
   const ambience = useRef<ReturnType<typeof createAmbience> | null>(null)
-  const flower = flowers[index]
+  const flower = flowers[index], words = meadowWords[index]
   const saved = favorites.includes(flower.id)
-
-  const choose = useCallback((value: number) => {
-    setIndex((value + flowers.length) % flowers.length)
-    setBlooming(false)
-    controls.current = { rotation: 0, zoom: 1 }
-  }, [])
-  const step = useCallback((direction: number) => {
-    setIndex(current => (current + direction + flowers.length) % flowers.length)
-    setBlooming(false)
-    controls.current = { rotation: 0, zoom: 1 }
-  }, [])
+  const choose = useCallback((value: number) => { setIndex((value + flowers.length) % flowers.length); setDetail(false) }, [])
+  const step = useCallback((direction: number) => { setIndex(current => (current + direction + flowers.length) % flowers.length); setDetail(false) }, [])
   const closePanel = useCallback(() => setPanel(null), [])
+  const closeDetail = useCallback(() => setDetail(false), [])
   const onReady = useCallback(() => setReady(true), [])
   const onLost = useCallback(() => { setFailed(true); setReady(false) }, [])
+  const changeTime = useCallback(() => setNight(current => !current), [])
 
+  const navigateGesture = useCallback((x: number, y: number) => {
+    if (panel || detail) return
+    if (Math.abs(x) > Math.abs(y) * 1.2 && Math.abs(x) > 60) step(x < 0 ? 1 : -1)
+    else if (Math.abs(y) > Math.abs(x) * 1.2 && Math.abs(y) > 65) {
+      if (y < 0) setDetail(true)
+      else changeTime()
+    }
+  }, [panel, detail, step, changeTime])
   useGesture({
-    onDrag: ({ first, last, movement: [x, y], pinching, canceled, touches }) => {
-      if (first) { dragStart.current = controls.current.rotation; pinched.current = false }
-      if (pinching || touches > 1) pinched.current = true
-      if (pinched.current || canceled) return
-      if (Math.abs(y) > Math.abs(x)) controls.current.rotation = dragStart.current + y * .012
-      if (last && Math.abs(x) > 55 && Math.abs(x) > Math.abs(y) * 1.2) step(x < 0 ? 1 : -1)
-    },
-    onPinch: ({ offset: [scale] }) => {
-      pinched.current = true
-      controls.current.zoom = scale
-    },
-  }, {
-    target: stage,
-    eventOptions: { passive: false },
-    drag: { filterTaps: true, threshold: 8 },
-    pinch: { scaleBounds: { min: .75, max: 1.4 }, from: () => [controls.current.zoom, 0] },
-  })
+    onDragEnd: ({ movement: [x, y], canceled }) => { if (!canceled) navigateGesture(x, y) },
+    onWheel: ({ event }) => event.preventDefault(),
+    onWheelEnd: ({ movement: [x, y] }) => navigateGesture(-x, -y),
+    onMove: ({ xy: [x, y] }) => { pointer.current = { x: x / innerWidth * 2 - 1, y: y / innerHeight * 2 - 1 } },
+    onHover: ({ hovering }) => { if (!hovering) pointer.current = { x: 0, y: 0 } },
+  }, { target: stage, enabled: !panel && !detail, eventOptions: { passive: false }, drag: { filterTaps: true, threshold: 10 } })
 
   useEffect(() => {
-    const visibility = () => setVisible(!document.hidden)
-    const query = matchMedia('(prefers-reduced-motion: reduce)')
+    const visibility = () => setVisible(!document.hidden), query = matchMedia('(prefers-reduced-motion: reduce)')
     const preference = () => setReduced(query.matches)
     document.addEventListener('visibilitychange', visibility)
     query.addEventListener('change', preference)
@@ -135,117 +141,75 @@ export default function App() {
     if (sound && visible && !panel) void ambience.current?.resume()
     else void ambience.current?.pause()
   }, [sound, visible, panel])
+  useEffect(() => { document.querySelector('meta[name="theme-color"]')?.setAttribute('content', night ? '#1b283e' : '#eec6a1') }, [night])
   useEffect(() => () => ambience.current?.dispose(), [])
   useEffect(() => {
     if (!toast) return
-    const timer = window.setTimeout(() => setToast(''), 2800)
+    const timer = setTimeout(() => setToast(''), 2800)
     return () => clearTimeout(timer)
   }, [toast])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (panel || (e.target instanceof HTMLElement && (e.target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)))) return
+      if (panel || detail || e.target instanceof HTMLElement && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return
       if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
       if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1) }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setDetail(true) }
+      if (e.key === 'ArrowDown') { e.preventDefault(); changeTime() }
     }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
-  }, [step, panel])
-
-  function toggleFavorite() {
+  }, [panel, detail, step, changeTime])
+  function saveFlower() {
     const next = saved ? favorites.filter(id => id !== flower.id) : [...favorites, flower.id]
     setFavorites(next)
-    try {
-      localStorage.setItem('hanakotoba-garden', JSON.stringify(next))
-      setToast(saved ? '已从花园移出，喜欢仍在心里。' : `${flower.name}已种进你的小花园。`)
-    } catch { setToast('已收藏到本次会话；浏览器暂时无法保存。') }
+    try { localStorage.setItem('hanakotoba-garden', JSON.stringify(next)); setToast(saved ? '已移出收藏。' : '这片花海，已留在你的花园。') }
+    catch { setToast('已收藏到本次会话，浏览器暂时无法保存。') }
   }
   async function toggleSound() {
     try {
       if (!ambience.current) ambience.current = createAmbience()
-      if (!sound) await ambience.current.resume()
-      else await ambience.current.pause()
+      if (sound) await ambience.current.pause()
+      else await ambience.current.resume()
       setSound(!sound)
     } catch { setToast('暂时无法播放声音，请稍后再试。') }
   }
-  function retry() { setReady(false); setFailed(false); setSceneKey(key => key + 1) }
+  const retry = () => { setFailed(false); setReady(false); setSceneKey(value => value + 1) }
+  const fallback = <div className="meadow-fallback"><FlowerIllustration id={flower.id} /><p>花海暂时无法打开</p><button onClick={retry}>重新尝试 <ArrowRight size={15} /></button></div>
 
-  const fallback = <div className="scene-fallback"><FlowerIllustration id={flower.id} /><p>暂时无法打开 3D 花庭</p><button onClick={retry}>重新尝试 <RotateCw size={14} /></button></div>
-  return <div className="app" style={{ '--flower-color': flower.color, '--flower-pale': flower.pale } as React.CSSProperties}>
-    <header className="header">
-      <a className="brand" href="#home" aria-label="花语小庭首页">
-        <span className="brand-mark"><Flower2 size={28} strokeWidth={1.25} /></span>
-        <span><strong>花语小庭</strong><small>HANAKOTOBA</small></span>
-      </a>
-      <nav className="navigation" aria-label="主导航">
-        <button className={panel === null || panel === 'collection' ? 'nav-link active' : 'nav-link'} onClick={() => setPanel('collection')}>花间漫游<span /></button>
-        <button className={panel === 'garden' ? 'nav-link active' : 'nav-link'} onClick={() => setPanel('garden')}>我的花园{favorites.length > 0 && <small className="favorite-count">{favorites.length}</small>}</button>
-        <button className={panel === 'story' ? 'nav-link active' : 'nav-link'} onClick={() => setPanel('story')}>关于小庭</button>
-      </nav>
-      <button className={`sound-button ${sound ? 'is-on' : ''}`} onClick={toggleSound} aria-label={sound ? '关闭环境声音' : '开启环境声音'} aria-pressed={sound}>
-        {sound ? <Volume2 size={17} strokeWidth={1.5} /> : <VolumeX size={17} strokeWidth={1.5} />}<span>{sound ? '听风与花' : '听见花开'}</span>
-      </button>
+  return <main className={`experience ${night ? 'night' : 'day'} ${detail ? 'show-details' : ''}`} data-mode={night ? 'night' : 'day'} data-flower={flower.id}>
+    <div className="sky"><div className="sky-glow" /><div className="celestial-body" /><div className="stars">{Array.from({ length: 36 }, (_, i) => <i key={i} style={{ left: `${(i * 73.17) % 100}%`, top: `${(i * 17.33) % 47}%`, animationDelay: `${i * .17}s` }} />)}</div></div>
+    <div className="meadow-stage" ref={stage} role="img" aria-label={`${night ? '月夜' : '日光'}中的${flower.name}三维花海。左右滑动切换，上滑查看花语，下滑切换昼夜。`}>
+      {!ready && !failed && <div className="meadow-loader"><Flower2 size={28} strokeWidth={1} /><span>风来了，花也醒了。</span></div>}
+      {failed ? fallback : <SceneBoundary key={sceneKey} onError={onLost} fallback={fallback}><Suspense fallback={null}>
+        <MeadowScene flower={flower.id} night={night} motion={!reduced} active={visible && !panel}
+          detail={detail} bloomReplay={bloomReplay} pointer={pointer} onReady={onReady} onLost={onLost} />
+      </Suspense></SceneBoundary>}
+    </div>
+    <div className="atmosphere-overlay" />
+    <header className="meadow-header">
+      <button className="brand" onClick={() => { choose(0); setNight(false) }} aria-label="回到郁金香花海"><Flower2 size={26} strokeWidth={1.2} /><span><strong>花语小庭</strong><small>HANAKOTOBA</small></span></button>
+      <span className="header-note"><span /> 一片只属于你的，温柔世界</span>
+      <div className="header-actions">
+        <button className="hud-button collection-button" onClick={() => setPanel('collection')} aria-label="选择花海"><Grid2X2 size={17} strokeWidth={1.3} /></button>
+        <button className="hud-button" onClick={() => setPanel('garden')} aria-label="我的花园"><Heart size={17} strokeWidth={1.3} />{favorites.length > 0 && <i />}</button>
+        <button className="hud-button" onClick={toggleSound} aria-label={sound ? '关闭环境声音' : '开启环境声音'} aria-pressed={sound}>{sound ? <Volume2 size={17} strokeWidth={1.3} /> : <VolumeX size={17} strokeWidth={1.3} />}</button>
+      </div>
     </header>
-
-    <main id="home">
-      <section className="hero" aria-label="互动花语庭院">
-        <div className="intro">
-          <div className="eyebrow intro-eyebrow"><span className="tiny-line" /> A MOMENT IN BLOOM</div>
-          <h1>有些心意，<br />花会替你说<span className="title-dot">。</span></h1>
-          <p className="intro-description">把日子过成一首温柔的诗，<br />从遇见一朵花开始。</p>
-          <div className="intro-rule" />
-          <p className="english-poem">A little bloom,<br /><em>a lot of love.</em></p>
-          <div className="season-note"><span className="sun-mark">☼</span><span>小庭里，永远是好天气</span></div>
-        </div>
-
-        <div className="scene-wrap">
-          <div className="scene-halo" />
-          <span className="floating-label label-top"><span /><span className="desktop-label">在风里，慢慢盛开</span><span className="mobile-label">上下轻拖 · 双指缩放</span></span>
-          <div className="scene" ref={stage} aria-label={`${flower.name}的互动三维花束。左右滑动切换花朵，上下拖动旋转，双指缩放。`} role="img">
-            {!ready && !failed && <div className="scene-loader"><Flower2 size={26} strokeWidth={1} /><span>一朵花，正在醒来…</span></div>}
-            {failed ? fallback : <SceneBoundary key={sceneKey} fallback={fallback} onError={onLost}>
-              <Suspense fallback={null}>
-                <FlowerScene flower={flower.id} blooming={blooming} rotating={rotating} motion={!reduced}
-                  active={visible && panel === null} controls={controls} onReady={onReady} onLost={onLost} />
-              </Suspense>
-            </SceneBoundary>}
-          </div>
-          <div className="ground-shadow" />
-          <div className="scene-caption"><span className="live-dot" /> {failed ? 'BOTANICAL COLLECTION' : 'LIVE 3D GARDEN'}<span className="caption-separator">/</span>每一瓣，都有温度</div>
-          <div className="scene-tools">
-            <button className={rotating ? 'is-on' : ''} onClick={() => setRotating(!rotating)} aria-pressed={rotating} title="自动旋转" aria-label={rotating ? '停止自动旋转' : '开启自动旋转'}><RotateCw size={17} strokeWidth={1.5} /></button>
-            <span />
-            <button onClick={() => { controls.current = { rotation: 0, zoom: 1 }; setRotating(false); setToast('已回到最初的视角。') }} title="重置视角" aria-label="重置花朵视角"><Maximize2 size={17} strokeWidth={1.5} /></button>
-          </div>
-        </div>
-
-        <div className="flower-info" key={flower.id}>
-          <div className="specimen-number"><span>{String(index + 1).padStart(2, '0')}</span><i />04</div>
-          <div className="flower-name-row"><h2>{flower.name}</h2><button className={`favorite-button ${saved ? 'saved' : ''}`} onClick={toggleFavorite} aria-label={saved ? `取消收藏${flower.name}` : `收藏${flower.name}`} aria-pressed={saved}><Heart size={20} strokeWidth={1.3} fill={saved ? 'currentColor' : 'none'} /></button></div>
-          <p className="latin-name">{flower.latin}</p>
-          <span className="meaning-tag"><Leaf size={12} strokeWidth={1.5} />{flower.tag}</span>
-          <div className="flower-poem"><span className="quote-mark">“</span><p>{flower.poem}</p></div>
-          <div className="meaning-detail"><span>花 语</span><p>{flower.meaning}</p></div>
-          <button className={`primary-button bloom-button ${blooming ? 'blooming' : ''}`} onClick={() => setBlooming(!blooming)} aria-pressed={blooming}>
-            {blooming ? <Flower2 size={17} strokeWidth={1.4} /> : <Sparkles size={17} strokeWidth={1.4} />}{blooming ? '让心意含苞' : '让心意盛开'}<ArrowRight size={15} />
-          </button>
-        </div>
-      </section>
-
-      <section className="flower-picker" aria-label="选择你的花朵">
-        <div className="picker-heading"><span><span className="picker-title">今日，与你相遇的花</span><span className="picker-subtitle">PICK YOUR LITTLE HAPPINESS</span></span><span className="gesture-hint"><MoveHorizontal size={17} strokeWidth={1.3} />左右轻滑，让浪漫继续</span></div>
-        <div className="flower-cards">
-          {flowers.map((f, i) => <button className={`flower-card ${index === i ? 'selected' : ''}`} key={f.id} onClick={() => choose(i)} aria-pressed={index === i} aria-label={`欣赏${f.name}：${f.meaning}`}>
-            <span className="card-art"><FlowerIllustration id={f.id} /></span>
-            <span className="card-copy"><span className="card-name">{f.name}<small>{f.en}</small></span><span className="card-meaning">{f.tag}</span></span>
-            <span className="card-state">{index === i ? <Check size={15} strokeWidth={1.4} /> : <ArrowRight size={14} strokeWidth={1.3} />}</span>
-          </button>)}
-        </div>
-        <div className="mobile-pagination"><button onClick={() => step(-1)} aria-label="上一种花"><ChevronLeft size={18} /></button><span>{flowers.map((f, i) => <button key={f.id} className={index === i ? 'current' : ''} onClick={() => choose(i)} aria-label={`选择${f.name}`} aria-pressed={index === i} />)}</span><button onClick={() => step(1)} aria-label="下一种花"><ChevronRight size={18} /></button></div>
-      </section>
-    </main>
-    <footer><span><Leaf size={13} strokeWidth={1.2} />在平凡的日子里，收集一点浪漫。</span><span>MADE WITH LOVE & A LITTLE MAGIC <Sparkles size={12} strokeWidth={1.2} /></span><button className="footer-story" onClick={() => setPanel('story')}>关于小庭</button></footer>
-    {panel && <Dialog panel={panel} close={closePanel} favorites={favorites} select={choose} />}
+    <div className="time-control"><button onClick={changeTime} className="time-toggle" aria-label={night ? '切换到白天' : '切换到夜晚'} aria-pressed={night}><span className={!night ? 'chosen' : ''}><Sun size={13} />日光</span><span className={night ? 'chosen' : ''}><Moon size={12} />月色</span></button><small><ArrowDown size={10} /> 下滑，{night ? '让春天醒来' : '让日光入梦'}</small></div>
+    <div className="meadow-title" key={`${flower.id}-${night}`}>
+      <span className="title-eyebrow">{night ? 'UNDER THE SAME TENDER MOON' : words.en}</span>
+      <h1>{night ? words.night : words.title}</h1>
+      <p>{night ? '白天的心事，就交给晚风吧。' : '不必去远方，浪漫就在这一刻。'}</p>
+    </div>
+    <div className="meadow-bottom">
+      <div className="meadow-identity"><span className="field-number">{String(index + 1).padStart(2, '0')}<i />04</span><button onClick={() => setDetail(true)} aria-label={`查看${flower.name}花语`}><h2>{flower.name}<em>{flower.en} meadow</em></h2><p>{flower.meaning}<ArrowRight size={13} /></p></button></div>
+      <button className="reveal-button" onClick={() => setDetail(true)}><span className="reveal-icon"><ChevronUp size={19} strokeWidth={1.2} /></span><span>上滑，听花说话<small>A LITTLE BLOOM, A LOT OF LOVE</small></span></button>
+      <div className="meadow-navigation"><div className="field-dots">{flowers.map((f, i) => <button key={f.id} className={i === index ? 'selected' : ''} onClick={() => choose(i)} aria-label={`切换到${f.name}花海`} aria-pressed={i === index}><span /><small>{f.name}</small></button>)}</div><div className="arrow-navigation"><button onClick={() => step(-1)} aria-label="上一片花海"><ChevronLeft size={18} /></button><span><MoveHorizontal size={15} /> 左右轻滑，遇见下一片花海</span><button onClick={() => step(1)} aria-label="下一片花海"><ChevronRight size={18} /></button></div></div>
+    </div>
+    <span className="side-note">SLOW DOWN. YOU'RE RIGHT WHERE YOU NEED TO BE.</span>
+    {detail && <FlowerDetails index={index} saved={saved} close={closeDetail} save={saveFlower} replay={() => setBloomReplay(value => value + 1)} />}
+    {panel && <Collection panel={panel} favorites={favorites} close={closePanel} select={choose} />}
     <div className={`toast ${toast ? 'show' : ''}`} role="status"><Check size={15} />{toast}</div>
-    <span className="sr-only" aria-live="polite">{flower.name}，{flower.meaning}。{blooming ? '花朵已盛开。' : ''}</span>
-  </div>
+    <span className="sr-only" aria-live="polite">{flower.name}花海，{night ? '月夜' : '白天'}。{flower.meaning}。</span>
+  </main>
 }
