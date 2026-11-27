@@ -2,6 +2,11 @@
   "name": "hanakotoba",
   "private": true,
   "version": "1.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ImaginingMaker/flowers.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",

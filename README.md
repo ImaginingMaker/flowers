@@ -1,72 +1,116 @@
 # 花语小庭 · Hanakotoba
 
-以手机屏幕为优先目标的 React 实时 3D 花语庭院。奶油纸色、暖色花瓣、柔和卡通光照和自然风动，视觉灵感来自日系手绘动画里的植物与日常浪漫。
+手机优先的全屏动态三维花海。进入页面就是温暖的花海、微风与远山；花语信息在上滑后展开。首屏以视觉与漫游为主。
 
-## 启动
+React + Three.js + React Three Fiber · 程序化花瓣建模 · GPU 实例化 · 日光 / 月夜
+
+![花语小庭花海预览](docs/preview-desktop.png)
+
+[手机预览](docs/preview-mobile.png) · [月夜预览](docs/preview-night.png) · [玫瑰近景](docs/rose-detail.png) · [盛开动画](docs/rose-bloom.gif)
+
+## 运行
 
 ```sh
+git clone https://github.com/ImaginingMaker/flowers.git
+cd flowers
 npm ci
 npm run dev
 ```
 
-打开终端输出的地址，默认 http://localhost:5173 。项目已经保存 TRAE Run 按钮配置：`.trae/environments/run.json`。开发服务器监听局域网地址，同一网络中的手机可以使用电脑的局域网 IP 和端口访问。
+默认地址：http://localhost:5173 。已保存 `.trae/environments/run.json`，可使用 TRAE Run 按钮。服务器监听局域网，同网络的手机可访问电脑的局域网 IP 和端口。
 
 ```sh
 npm run build
 npm run preview
 ```
 
-使用 Node.js 22.12+；本次构建环境为 Node.js 24.18。依赖版本由 `package-lock.json` 锁定。
+使用 Node.js 22.12+；本次环境为 Node.js 24.18。`package-lock.json` 锁定依赖版本。
 
-## 技术调研与选型
+## 引导式交互
 
-2026-11-27 通过网络搜索，并实际打开以下官方文档核对。
+| 操作 | 结果 |
+| --- | --- |
+| 左右滑动 | 在郁金香、玫瑰、波斯菊、雏菊四片花海间循环切换 |
+| 上滑 | 相机向花朵推进，展开当前花种的花语、诗句、季节与收藏 |
+| 下滑 | 在花海中切换白天 / 月夜；在详情卡片顶部下滑则收起详情 |
+| 点击日光 / 月色 | 与下滑相同的昼夜切换 |
+| 点击底部花种标记、箭头或顶部花海按钮 | 直接选择花海 |
+| 鼠标滚轮 | 向下滚动展开详情，向上滚动切换昼夜；横向滚动切换花海 |
+| 键盘方向键 | 左右切花、上键展开详情、下键切昼夜；Escape 关闭详情或收藏面板 |
 
-| 需求 | 本项目选择 | 依据与取舍 |
+收藏沿用 `hanakotoba-garden` 的本地存储；环境声音默认关闭，开启后合成风声与柔和音符。
+
+## 技术选型与资料
+
+技术选型参考了以下花海、草地、GPU 实例化与风动着色器资料：
+
+| 资料 | 核实内容 | 本次采用 |
 | --- | --- | --- |
-| React 场景管理 | React 19 + React Three Fiber 9 | [R3F Introduction](https://r3f.docs.pmnd.rs/getting-started/introduction) 明确说明它是 Three.js 的 React renderer，并给出 React 19 / Fiber 9 的主版本配对。花瓣、花茎、光照作为可组合 React 组件。 |
-| 浏览器实时 3D | Three.js / WebGL | 保持成熟的 WebGL 路径；官方 R3F 页面说明 v10 的 WebGPU 当时仍为 alpha，本次不采用预览版本。 |
-| 统一动画植物风格 | MeshToonMaterial、顶点色、五阶渐变光照 | [Three.js MeshToonMaterial](https://threejs.org/docs/pages/MeshToonMaterial.html#gradientMap) 规定渐变贴图使用 NearestFilter。用顶点渐变表现根部与花瓣边缘的色差，避免写实高光带来的塑料质感。 |
-| 触摸交互 | @use-gesture/react | [官方手势文档](https://use-gesture.netlify.app/docs/gestures/) 提供 drag、pinch 与组合手势，并说明触摸拖动需要设置 touch-action。本项目将手势限制在花束区域，页面其他部分保留正常滚动。 |
-| 手机性能 | 像素密度上限、几何体复用、后台停止帧循环 | [R3F Scaling performance](https://r3f.docs.pmnd.rs/advanced/scaling-performance) 解释持续渲染的能耗、按需渲染、资源复用、实例化和动态分辨率。当前风动需要持续绘制；切到后台或打开遮罩后停止绘制，音效同时暂停。 |
-| 建模与加载 | 本地参数曲面 + TubeGeometry | 当前不需要下载 GLB 或图片。根据曲面参数构造花瓣、弯曲叶片和自然花茎，按花种复用花瓣几何体；未来需要精细艺术资产时，可改用 Blender → glTF/GLB → R3F 的工作流。 |
+| [Three.js：InstancedMesh](https://threejs.org/docs/pages/InstancedMesh.html) | 同一几何体和材质可用不同世界变换重复渲染，适合大量相同对象；矩阵更新后需要标记 instanceMatrix.needsUpdate。 | 将每朵花的花瓣、花茎、叶片合并为一个几何体，再按花色和距离分组实例化。 |
+| [Codrops：How to Make The Fluffiest Grass With Three.js](https://tympanus.net/codrops/2025/02/04/how-to-make-the-fluffiest-grass-with-three-js/)（2025-02-04） | 系统讨论实例化、分块、LOD、根部阴影、颜色变化和顶点着色器风动；也强调仅减少 draw call 不足以保证性能。 | 实现近 / 远两档几何细节、根部较暗的植物色、依据世界位置错开相位的双正弦风动。本文的草地贴图卡片与百万草叶规模没有照搬。 |
+| [R3F：Scaling performance](https://r3f.docs.pmnd.rs/advanced/scaling-performance) | 说明持续帧循环、按需渲染、资源复用、实例化和动态像素密度的取舍。 | 限制 DPR，检测低帧率后降低花海密度；后台与选择面板暂停绘制，减少动态效果偏好下按需绘制。 |
+| [use-gesture：Gesture options](https://use-gesture.netlify.app/docs/options/) | 支持目标节点、事件配置、手势阈值、轴向意图等配置。 | 将整个花海作为触摸区，按主要移动方向和距离判断切花 / 详情 / 昼夜，详情顶部单独处理收起手势。 |
+| [R3F：Introduction](https://r3f.docs.pmnd.rs/getting-started/introduction) | React Three Fiber 是 Three.js 的 React renderer；Fiber 9 对应 React 19。 | React 19 + Fiber 9 + Three.js 的组合保持不变。 |
 
-本次实际安装：React 19.3.1、R3F 9.8.2、Three.js 0.180.0、use-gesture 10.3.1、TypeScript 5.9.3、Vite 7.3.8。
+视觉选择：全屏透视相机、近处的大花朵、远处密集的小花、起伏草地与远山，建立纵深。日间使用蜜桃色天空、暖阳与珊瑚 / 蜂蜜色花瓣；夜间过渡为靛蓝天空、月牙、星点与漂浮微光。昼夜同时更新场景雾色、灯光、植物着色器和页面颜色。
 
-没有加入全屏后期处理、实时投影阴影或外部 HDR 环境贴图，先将资源投入花瓣造型与移动端的稳定性。中心光晕和纸感由 CSS / SVG 程序纹理绘制；主花束是可旋转的真实三维几何体。中文衬线字体优先加载 Noto Serif SC，网络不可用时使用系统宋体回退。
+## 渲染结构
 
-## 已实现
+- 主植物全部是本地生成的三维曲面，没有用花海背景图片代替三维建模。
+- `meadowGeometry.ts` 合并单花几何体；花色 × 近远两档共六组 InstancedMesh。
+- 常规设置下手机使用 885 株花、较宽屏幕使用 1275 株；低帧率档降为 561 株。这是代码配置数量，实际可见数量由构图决定。
+- `meadowMaterial.ts` 在 GPU 上根据花根位置和时间弯曲植物顶端；根部保持固定。切换花种时先合拢旧花海的花瓣，再让新花海逐瓣展开。
+- 草叶同样实例化并使用风动着色器；云层合并为一个几何体，远山使用简化三维曲面。
+- 详情复用同一 WebGL Canvas，并补充一株近景花；没有额外启动第二个三维渲染器。
+- 天空、月牙与星点由 CSS 绘制，花海、地形、云层、风动与漂浮光点由 Three.js 绘制。
+- 遵循系统减少动态效果设置；后台暂停风动和声音。WebGL 失败时提供植物标记、提示与重试。
 
-- 郁金香、玫瑰、波斯菊、雏菊四种三枝花束；暖色花瓣与统一植物绿。
-- 左右滑动切换，点击花卡切换，键盘左右箭头切换。
-- 上下拖动旋转、双指缩放、自动旋转、重置视角。
-- 盛开 / 含苞动画；切换花种时平滑收起与出现。
-- 花语、诗句、花种拉丁名；花语是创作性的浪漫解读，文化与花色可能对应不同寓意。
-- 本地收藏、我的花园、全部花种选择、关于小庭。
-- 可选环境声音：Web Audio 合成风声与柔和音符，默认关闭。
-- 后台暂停、低帧率降 DPR、系统减少动态效果偏好、WebGL 失败提示与重试。
-- 键盘可达按钮、状态播报、弹窗 Escape 关闭与焦点锁定。
-
-## 文件
+## 主要文件
 
 ```text
-src/App.tsx                  页面、收藏、弹窗、手势
-src/FlowerScene.tsx          三维花束、相机、风动、花朵过渡
-src/geometry.ts              花瓣曲面、叶片与花茎建模
-src/data.ts                  花种、花语与暖色调色板
-src/FlowerIllustration.tsx   花种导航的原创 SVG 植物标记
+src/App.tsx                  沉浸页面、方向手势、详情、收藏与昼夜状态
+src/MeadowScene.tsx          花海实例、地形、相机推进、云与微光
+src/meadowGeometry.ts        合并花朵模型、近远细节、植物分布
+src/meadowMaterial.ts        GPU 风动、植物明暗、昼夜与雾色
+src/botany/petalProfile.ts   五点花瓣轮廓与单顶点圆头拓扑
+src/botany/bloomGeometry.ts  花瓣卷曲、含苞与盛开姿态预计算
+src/geometry.ts              参数花瓣与叶片曲面
+src/data.ts                  花种与花语
+src/FlowerIllustration.tsx   收藏与详情中的原创植物 SVG 标记
 src/ambient.ts               Web Audio 环境声音
-src/styles.css               响应式页面与纸感视觉
+src/styles.css               全屏构图、引导、天空与详情卡片
 ```
 
-## 验证与边界
+## 从 bloom-animation 吸收的改进
 
-- `npm run build`：TypeScript 检查与生产打包通过。
-- 在 Chromium 浏览器中实际渲染四种花束，检查盛开前后造型；通过触摸事件验证横滑切花、上下旋转及双指缩放。
-- 收藏刷新恢复、我的花园、环境声音开关、键盘切换验证通过。
-- 主动模拟 WebGL context 丢失后，故障提示与重试恢复通过；减少动态效果偏好和弹窗焦点锁定验证通过。测试浏览器记录未出现 JavaScript 运行时异常。
-- 320、375、390、430、768、1365 像素宽度检查未发现横向溢出；390 × 844 视口下页面完整呈现。更矮的屏幕允许正常纵向滚动。
-- 浏览器设备模拟不等于真实手机验收；尚未在真实 iPhone Safari / Android Chrome 上测量持续帧率、温度与耗电。不声称所有设备达到 60 FPS。
-- 三维渲染依赖 WebGL 2 支持；不可用时提供植物插画、提示与重试入口。
-- 首次进入时懒加载 Three.js / R3F 场景；当前场景包约 240 KB gzip，Vite 仍会提示未压缩 chunk 较大。
-- 这是完整可运行的程序化建模初版。进一步接近精细动画电影质感，可继续引入人工雕刻花瓣、局部植物纹理与更细致的叶片组织；移动设备性能需要随之重新验证。
+花瓣与盛开算法参考了 `bloom-animation` 的实现及其动画演示。
+
+| 参考位置 | 吸收方式 |
+| --- | --- |
+| `petalProfile.ts` / `petalMesh.ts` | 采用五点宽度轮廓、平滑插值与圆头封口；末端只保留一个顶点，避免整行顶点压成尖刺或产生退化面。雏菊与波斯菊用新轮廓。 |
+| `flowerScene.ts` 的黄金角布局 | 玫瑰从同心圈改为约 137.5° 的螺旋排列，花心向外逐步改变位置、尺寸与倾角，并加入轻微、确定性的错位。 |
+| 花瓣曲线积分与卷边 | 用杯形、侧卷、边缘起伏构造玫瑰；分别预计算含苞与盛开时的顶点和法线。 |
+| 层次盛开与 easing | 外层和花心错开开启时间，详情近景提供“再看一次花开”，约 3.4 秒完成一次展开。 |
+| 包裹光与透光 | 在原有暖色光照上添加补光、视角相关的柔和边缘光和花瓣背光透光，保留花心与外缘色差。 |
+| 几何体与材质生命周期 | 切换花种时更新和释放模型，保留风动材质，减少重复编译着色器。 |
+
+参考项目主要展示一朵精细花；当前首屏是数百株花海。因此保留整花实例化、近远两档模型和更精细的单株近景。参考项目每帧执行的曲线积分移到建模阶段，GPU 只混合两个姿态，中间形变是近似。保留当前暖色花海构图与手势导航，采用 CPU 轮廓计算也避免依赖浮点纹理线性过滤。
+
+复用与改编的代码出处及 MIT 许可见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+
+## 验证与限制
+
+- TypeScript 检查与生产构建通过。
+- 在 Chromium 设备模拟中实际验证四片花海、左滑切花、上滑近景详情、下滑昼夜、详情下滑收起、收藏与刷新恢复。
+- 验证详情焦点锁定与 Escape 关闭；打开详情时没有页面或容器滚动偏移。
+- 检查手机、平板与桌面尺寸；浏览器模拟不能替代真实手机。
+- 一次手机视口采样记录为 14 次 draw call、约 22.5 万三角形（郁金香低密度档）。该记录用于检查渲染组织，不能推导真实手机帧率。
+- 减少动态效果下的按需渲染、WebGL 故障恢复、滚轮与键盘方向导航验证通过；对同一花海的不同帧截图检查确认前景植物持续运动。
+- 未做真实 iPhone / Android 上的持续帧率、温度和耗电测试；不保证所有设备达到 60 FPS。
+- 三维花海需要 WebGL 2。场景模块懒加载，压缩后约 244 KB，Vite 仍提示未压缩模块较大。
+- 中文字体通过 Google Fonts 加载 Noto Serif SC，无法联网时使用系统宋体回退。
+- 当前是程序化建模的风格化花海；进一步追求电影级植物造型可引入艺术家制作的 GLB，并重新验证移动端负载。
+
+## 开源许可
+
+本项目使用 [MIT License](LICENSE)。改编的第三方代码保留原版权声明，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
